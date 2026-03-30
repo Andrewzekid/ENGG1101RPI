@@ -157,41 +157,41 @@ class YOLO_RaspberryPi:
                                 detected = class_name.lower()
                                 print(f" {detected}: {conf:.2f}")
                                   
-                            # Only register the last class detected
-                            try:
-                                if detected not in types:
-                                    continue
-                                    
-                                audio_path = class_to_audio[detected]
-                                print("Detected: ",detected)
-                                sound = pygame.mixer.Sound(audio_path)
-                                sound.play()
+                                # Only register the last class detected
+                                try:
+                                    if detected not in types:
+                                        continue
+                                        
+                                    audio_path = class_to_audio[detected]
+                                    print("Detected: ",detected)
+                                    sound = pygame.mixer.Sound(audio_path)
+                                    sound.play()
 
-                                # Keep the program running to hear the sound
-                                pygame.time.wait(2000)  # Wait 3 seconds
+                                    # Keep the program running to hear the sound
+                                    pygame.time.wait(2000)  # Wait 3 seconds
 
-                                if(detected == "metal"):
-                                    baseservo.angle = 0
-                                    tiltacw()
-                                    time.sleep(3)
-                                    reset()
-                                elif(detected == "paper"):
-                                    baseservo.angle = 0
-                                    tiltcw()
-                                    time.sleep(3)
-                                    reset()
-                                elif(detected == "cardboard"):
-                                    baseservo.angle = 90
-                                    tiltcw()
-                                    time.sleep(3)
-                                    reset()
-                                else:
-                                    baseservo.angle = 90
-                                    tiltacw()
-                                    time.sleep(3)
-                                    reset()
-                            except Exception as e:
-                                print("Encountered Exception: ",e)
+                                    if(detected == "metal"):
+                                        baseservo.angle = 0
+                                        tiltacw()
+                                        time.sleep(3)
+                                        reset()
+                                    elif(detected == "paper"):
+                                        baseservo.angle = 0
+                                        tiltcw()
+                                        time.sleep(3)
+                                        reset()
+                                    elif(detected == "cardboard"):
+                                        baseservo.angle = 90
+                                        tiltcw()
+                                        time.sleep(3)
+                                        reset()
+                                    else:
+                                        baseservo.angle = 90
+                                        tiltacw()
+                                        time.sleep(3)
+                                        reset()
+                                except Exception as e:
+                                    print("Encountered Exception: ",e)
                         else:
                             print(f"Frame {frame_count}: No detections")
 

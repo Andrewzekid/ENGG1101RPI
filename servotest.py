@@ -33,4 +33,5 @@ while True:
     top,bottom = tuple(map(int,input().split()))
     topservo.angle = top
     baseservo.angle = bottom
+    print("Modifying servo angle")
     sleep(2)
