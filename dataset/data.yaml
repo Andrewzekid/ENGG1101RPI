@@ -1,0 +1,9 @@
+path: dataset
+
+train: images/train
+val: images/val
+
+names:
+  0: can
+  1: glass
+  2: plastic
