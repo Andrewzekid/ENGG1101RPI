@@ -5,7 +5,7 @@ import time
 import os
 import pygame
 import pygame.mixer
-import lgpiogpio  # Import lgpio
+import lgpio # Import lgpio
 from time import sleep
 import atexit
 
