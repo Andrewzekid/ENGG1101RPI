@@ -30,7 +30,7 @@ def tiltcw():
     sleep(1)
 
 while True:
-    topservo,bottomservo = tuple(map(int,input().split("")))
+    topservo,bottomservo = tuple(map(int,input().split()))
     topservo.angle = topservo
     bottomservo.angle = bottomservo
     time.sleep(2)
