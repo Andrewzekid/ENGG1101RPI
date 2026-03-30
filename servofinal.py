@@ -254,7 +254,7 @@ class YOLO_RaspberryPi:
 if __name__ == "__main__":
     # Initialize Pygame and the mixer
     # Method 1: Play a sound file (WAV recommended)
-    sound = pygame.mixer.Sound("Plastic.wav")
+    sound = pygame.mixer.Sound("Paper.wav")
     sound.play()
 
     # Keep the program running to hear the sound
