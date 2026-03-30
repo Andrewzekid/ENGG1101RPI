@@ -173,18 +173,22 @@ class YOLO_RaspberryPi:
                                 if(detected == "metal"):
                                     baseservo.angle = 0
                                     tiltacw()
+                                    time.sleep(3)
                                     reset()
                                 elif(detected == "paper"):
                                     baseservo.angle = 0
                                     tiltcw()
+                                    time.sleep(3)
                                     reset()
                                 elif(detected == "cardboard"):
                                     baseservo.angle = 90
                                     tiltcw()
+                                    time.sleep(3)
                                     reset()
                                 else:
                                     baseservo.angle = 90
                                     tiltacw()
+                                    time.sleep(3)
                                     reset()
                             except Exception as e:
                                 print("Encountered Exception: ",e)
