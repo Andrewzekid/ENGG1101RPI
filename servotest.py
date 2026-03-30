@@ -1,4 +1,3 @@
-from ultralytics import YOLO
 import time
 import os
 import pygame
