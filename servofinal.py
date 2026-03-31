@@ -25,20 +25,20 @@ servo_lock = Lock()
 def reset():
     with servo_lock:
         baseservo.angle = 0
-        topservo.angle = 65
+        topservo.angle = 15
 
 def tiltacw():
     with servo_lock:
-        topservo.angle = 110
+        topservo.angle = 90
         sleep(2)
-        topservo.angle = 65
+        topservo.angle = 15
         sleep(1)
 
 def tiltcw():
     with servo_lock:
-        topservo.angle = -90
+        topservo.angle = -45
         sleep(2)
-        topservo.angle = 0
+        topservo.angle =15
         sleep(1)
 
 # Initialize Pygame and the mixer, reset the servo position
@@ -185,17 +185,13 @@ class YOLO_RaspberryPi:
                                     # Move servo based on detection
                                     with servo_lock:
                                         if best_detection == "metal":
-                                            baseservo.angle = 0
                                             # Use non-blocking movement
                                             self.move_servo_non_blocking("metal")
                                         elif best_detection == "paper":
-                                            baseservo.angle = 0
                                             self.move_servo_non_blocking("paper")
                                         elif best_detection == "cardboard":
-                                            baseservo.angle = 90
                                             self.move_servo_non_blocking("cardboard")
                                         else:  # other
-                                            baseservo.angle = 90
                                             self.move_servo_non_blocking("other")
                                     
                                     last_detection_time = current_time
@@ -270,7 +266,7 @@ class YOLO_RaspberryPi:
         def move():
             if detected_class in ["metal", "paper"]:
                 # These use tiltcw/tiltacw which have internal sleeps
-                baseservo.angle = 90
+                baseservo.angle =45
                 if detected_class == "metal":
                     tiltacw()
                 else:  # paper
