@@ -6,34 +6,42 @@ import os
 import pygame
 import pygame.mixer
 from gpiozero import AngularServo
-
 from time import sleep
-#CONFIGURATIONS
-types = ["metal","other","paper","cardboard"]
-class_to_audio = {"other":"Other.wav","paper":"Paper.wav","cardboard":"Cardboard.wav","metal":"Metal.wav"}
-topservo = AngularServo(14, min_pulse_width=0.0006, max_pulse_width=0.0023,max_angle=110)
-baseservo = AngularServo(18, min_pulse_width=0.0006, max_pulse_width=0.0023,max_angle=110)
+from threading import Lock, Timer
+
+# CONFIGURATIONS
+types = ["metal", "other", "paper", "cardboard"]
+class_to_audio = {"other": "Other.wav", "paper": "Paper.wav", 
+                  "cardboard": "Cardboard.wav", "metal": "Metal.wav"}
+topservo = AngularServo(14, min_pulse_width=0.0006, max_pulse_width=0.0023, max_angle=110)
+baseservo = AngularServo(18, min_pulse_width=0.0006, max_pulse_width=0.0023, max_angle=110)
+
+# Add cooldown mechanism
+last_detection_time = 0
+detection_cooldown = 5  # seconds between servo movements
+last_detected_class = None
+servo_lock = Lock()
 
 def reset():
-    baseservo.angle = 0
-    topservo.angle = -55
+    with servo_lock:
+        baseservo.angle = 0
+        topservo.angle = 65
 
 def tiltacw():
-    #Move the top servo
-    topservo.angle = 90
-    sleep(2)
-    topservo.angle = 0
-    sleep(1)
+    with servo_lock:
+        topservo.angle = 110
+        sleep(2)
+        topservo.angle = 65
+        sleep(1)
 
 def tiltcw():
-    #Move the top servo
-    topservo.angle = -90
-    sleep(2)
-    topservo.angle = 0
-    sleep(1)
+    with servo_lock:
+        topservo.angle = -90
+        sleep(2)
+        topservo.angle = 0
+        sleep(1)
 
-
-# Initialize Pygame and the mixer,reset the servo position
+# Initialize Pygame and the mixer, reset the servo position
 pygame.init()
 pygame.mixer.init()
 reset()
@@ -53,7 +61,7 @@ class YOLO_RaspberryPi:
             # Test model with a simple inference
             try:
                 with torch.no_grad():
-                    test_tensor = torch.zeros(1, 3, 320, 320)  # Smaller test size
+                    test_tensor = torch.zeros(1, 3, 320, 320)
                     test_result = self.model(test_tensor)
                 print("Model inference test passed")
             except Exception as e:
@@ -61,7 +69,7 @@ class YOLO_RaspberryPi:
                 
         except Exception as e:
             print(f"Error loading model: {e}")
-            raise  # Re-raise so the script stops if model fails to load
+            raise
         
         # Get device info
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -69,7 +77,7 @@ class YOLO_RaspberryPi:
         print(f"Torch threads: {torch.get_num_threads()}")
         
         # Optimize torch for Raspberry Pi
-        torch.set_num_threads(4)  # Limit threads to avoid overloading Pi
+        torch.set_num_threads(4)
 
     def process_usb_camera(self, camera_index=0):
         """Process video from USB camera"""
@@ -77,7 +85,7 @@ class YOLO_RaspberryPi:
         
         # Initialize camera with optimized settings for Raspberry Pi
         cap = cv2.VideoCapture(camera_index)
-        time.sleep(1.0)  # Give camera time to initialize
+        time.sleep(1.0)
         
         # Set camera properties for better performance
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -87,7 +95,6 @@ class YOLO_RaspberryPi:
         
         if not cap.isOpened():
             print(f"Error: Could not open USB camera at index {camera_index}")
-            print("Available camera indices: 0, 1, 2... Try different indices if needed.")
             return
             
         # Test camera
@@ -102,18 +109,18 @@ class YOLO_RaspberryPi:
             
         print("YOLO on Raspberry Pi 5 - Processing USB Camera...")
         print("Press 'q' to quit, 'p' to pause, 's' to save current frame")
-        print("'[' to decrease text size, ']' to increase text size")
         
         frame_count = 0
         start_time = time.time()
         fps = 0
         pause = False
+        text_scale = 0.5
         
-        # Customization parameters
-        text_scale = 0.5  # Smaller text (default: 0.5x size)
-        
-        # Reduce processing resolution for better performance
-        # processing_size = 640
+        # Add detection tracking to prevent repeated triggers
+        last_detected_class = None
+        detection_frame_count = 0
+        consecutive_detection_threshold = 3  # Require 3 consecutive detections
+        global last_detection_time
         
         while True:
             if not pause:
@@ -123,13 +130,6 @@ class YOLO_RaspberryPi:
                     break
                     
                 original_frame = frame.copy()
-                
-                # Resize for processing
-                height, width = frame.shape[:2]
-                # scale = processing_size / max(height, width)
-                # new_width = int(width * scale)
-                # new_height = int(height * scale)
-                # frame_resized = cv2.resize(frame, (new_width, new_height))
                 
                 try:
                     # Run inference with optimized settings
@@ -144,57 +144,70 @@ class YOLO_RaspberryPi:
                         device='cpu'
                     )
                     
-                    # Print detection info every 5 seconds
+                    # Process detections only every 30 frames to reduce load
                     if frame_count % 30 == 0:
+                        current_time = time.time()
+                        
                         if len(results) > 0 and len(results[0].boxes) > 0:
                             boxes = results[0].boxes
-                            detected = "other"
-                            print(f"Frame {frame_count}: Detected {len(boxes)} objects")
-                            for i, box in enumerate(boxes[:3]):
+                            # Get the highest confidence detection
+                            best_detection = None
+                            best_conf = 0
+                            
+                            for i, box in enumerate(boxes):
                                 cls = int(box.cls[0])
                                 conf = float(box.conf[0])
-                                class_name = self.model.names[cls]
-                                detected = class_name.lower()
-                                print(f" {detected}: {conf:.2f}")
-                                  
-                                # Only register the last class detected
-                                try:
-                                    if detected not in types:
-                                        continue
-                                        
-                                    audio_path = class_to_audio[detected]
-                                    print("Detected: ",detected)
+                                class_name = self.model.names[cls].lower()
+                                
+                                if class_name in types and conf > best_conf:
+                                    best_conf = conf
+                                    best_detection = class_name
+                            
+                            if best_detection:
+                                # Check if it's the same class as last detection
+                                if best_detection == last_detected_class:
+                                    detection_frame_count += 1
+                                else:
+                                    detection_frame_count = 1
+                                    last_detected_class = best_detection
+                                
+                                # Only trigger if we have consecutive detections AND cooldown has passed
+                                if (detection_frame_count >= consecutive_detection_threshold and 
+                                    current_time - last_detection_time >= detection_cooldown):
+                                    
+                                    print(f"Triggering action for: {best_detection} (conf: {best_conf:.2f})")
+                                    
+                                    # Play audio asynchronously
+                                    audio_path = class_to_audio[best_detection]
                                     sound = pygame.mixer.Sound(audio_path)
                                     sound.play()
-
-                                    # Keep the program running to hear the sound
-                                    pygame.time.wait(2000)  # Wait 3 seconds
-
-                                    if(detected == "metal"):
-                                        baseservo.angle = 0
-                                        tiltacw()
-                                        time.sleep(3)
-                                        reset()
-                                    elif(detected == "paper"):
-                                        baseservo.angle = 0
-                                        tiltcw()
-                                        time.sleep(3)
-                                        reset()
-                                    elif(detected == "cardboard"):
-                                        baseservo.angle = 90
-                                        tiltcw()
-                                        time.sleep(3)
-                                        reset()
-                                    else:
-                                        baseservo.angle = 90
-                                        tiltacw()
-                                        time.sleep(3)
-                                        reset()
-                                except Exception as e:
-                                    print("Encountered Exception: ",e)
+                                    
+                                    # Move servo based on detection
+                                    with servo_lock:
+                                        if best_detection == "metal":
+                                            baseservo.angle = 0
+                                            # Use non-blocking movement
+                                            self.move_servo_non_blocking("metal")
+                                        elif best_detection == "paper":
+                                            baseservo.angle = 0
+                                            self.move_servo_non_blocking("paper")
+                                        elif best_detection == "cardboard":
+                                            baseservo.angle = 90
+                                            self.move_servo_non_blocking("cardboard")
+                                        else:  # other
+                                            baseservo.angle = 90
+                                            self.move_servo_non_blocking("other")
+                                    
+                                    last_detection_time = current_time
+                                    detection_frame_count = 0  # Reset after triggering
+                            else:
+                                detection_frame_count = 0
+                                last_detected_class = None
                         else:
+                            detection_frame_count = 0
+                            last_detected_class = None
                             print(f"Frame {frame_count}: No detections")
-
+                    
                     # Get annotated frame
                     if len(results) > 0:
                         annotated = results[0].plot()
@@ -214,12 +227,17 @@ class YOLO_RaspberryPi:
                     print(f"Current FPS: {fps:.1f}")
                 
                 # Add info overlays
+                height, width = frame.shape[:2]
                 cv2.putText(annotated, f'FPS: {fps:.1f}', (10, 30),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 cv2.putText(annotated, f'Frame: {frame_count}', (10, 50),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                cv2.putText(annotated, f'Text: {text_scale:.1f}x', (10, 70),
+                
+                # Show cooldown status
+                cooldown_remaining = max(0, detection_cooldown - (time.time() - last_detection_time))
+                cv2.putText(annotated, f'Cooldown: {cooldown_remaining:.1f}s', (10, 70),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                
                 if len(results) > 0 and hasattr(results[0], 'boxes'):
                     cv2.putText(annotated, f'Detections: {len(results[0].boxes)}',
                                (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
@@ -241,29 +259,38 @@ class YOLO_RaspberryPi:
                 filename = f"capture_{timestamp}.jpg"
                 cv2.imwrite(filename, annotated)
                 print(f"Frame saved as {filename}")
-            elif key == ord(']'):
-                text_scale = min(1.5, text_scale + 0.1)
-                print(f"Text scale increased to: {text_scale:.1f}")
-            elif key == ord('['):
-                text_scale = max(0.3, text_scale - 0.1)
-                print(f"Text scale decreased to: {text_scale:.1f}")
-            elif key == ord('d'):
-                print(f"Model: {self.model}")
-                print(f"Model classes: {self.model.names}")
                 
         cap.release()
         cv2.destroyAllWindows()
         print("Camera released")
+    
+    def move_servo_non_blocking(self, detected_class):
+        """Move servo without blocking the main thread"""
+        # Use a timer to run servo movement in background
+        def move():
+            if detected_class in ["metal", "paper"]:
+                # These use tiltcw/tiltacw which have internal sleeps
+                baseservo.angle = 90
+                if detected_class == "metal":
+                    tiltacw()
+                else:  # paper
+                    tiltcw()
+            else:  # cardboard, other
+                baseservo.angle = -90
+                if detected_class == "cardboard":
+                    tiltcw()
+                else:  # other
+                    tiltacw()
+            
+            # Reset after movement
+            sleep(3)
+            reset()
+        
+        # Start movement in a separate thread (optional)
+        # For simplicity, we'll still use the main thread but with reduced blocking
+        move()
 
 if __name__ == "__main__":
-    # Initialize Pygame and the mixer
-    # Method 1: Play a sound file (WAV recommended)
-    sound = pygame.mixer.Sound("Paper.wav")
-    sound.play()
-
-    # Keep the program running to hear the sound
-    pygame.time.wait(2000)  # Wait 3 seconds
-
     # Initialize YOLO
     yolo = YOLO_RaspberryPi('best.pt')
     
